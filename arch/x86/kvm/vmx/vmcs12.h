@@ -69,7 +69,8 @@ struct __packed vmcs12 {
 	u64 vm_function_control;
 	u64 eptp_list_address;
 	u64 pml_address;
-	u64 padding64[3]; /* room for future expansion */
+	u64 tsc_multiplier;
+	u64 padding64[2]; /* room for future expansion */
 	/*
 	 * To allow migration of L1 (complete with its L2 guests) between
 	 * machines of different natural widths (32 or 64 bit), we cannot have
@@ -193,7 +194,7 @@ struct __packed vmcs12 {
  * IMPORTANT: Changing this value will break save/restore compatibility with
  * older kvm releases.
  */
-#define VMCS12_REVISION 0x11e57ed0
+#define VMCS12_REVISION 0x11e57ed1
 
 /*
  * VMCS12_SIZE is the number of bytes L1 should allocate for the VMXON region
