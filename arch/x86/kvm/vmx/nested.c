@@ -3354,8 +3354,26 @@ enum nvmx_vmentry_status nested_vmx_enter_non_root_mode(struct kvm_vcpu *vcpu,
 	}
 
 	enter_guest_mode(vcpu);
-	if (vmcs12->cpu_based_vm_exec_control & CPU_BASED_USE_TSC_OFFSETTING)
-		vcpu->arch.tsc_offset += vmcs12->tsc_offset;
+
+	if (vmcs12->cpu_based_vm_exec_control & CPU_BASED_USE_TSC_OFFSETTING) {
+		if (vmcs12->secondary_vm_exec_control & SECONDARY_EXEC_TSC_SCALING) {
+			/* we need to treat negative offsets as signed values
+			 * otherwise the result won't fit in 64 bits */
+			vcpu->arch.tsc_offset = mul_s64_s64_shr(
+				vcpu->arch.tsc_offset,
+				vmcs12->tsc_multiplier,
+				kvm_tsc_scaling_ratio_frac_bits);
+
+			vcpu->arch.tsc_offset += vmcs12->tsc_offset;
+
+			vcpu->arch.tsc_scaling_ratio = mul_u64_u64_shr(
+					vcpu->arch.tsc_scaling_ratio,
+					vmcs12->tsc_multiplier,
+					kvm_tsc_scaling_ratio_frac_bits);
+		} else {
+			vcpu->arch.tsc_offset += vmcs12->tsc_offset;
+		}
+	}
 
 	if (prepare_vmcs02(vcpu, vmcs12, &entry_failure_code)) {
 		exit_reason.basic = EXIT_REASON_INVALID_STATE;
@@ -4442,8 +4460,12 @@ void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 vm_exit_reason,
 	if (nested_cpu_has_preemption_timer(vmcs12))
 		hrtimer_cancel(&to_vmx(vcpu)->nested.preemption_timer);
 
-	if (vmcs12->cpu_based_vm_exec_control & CPU_BASED_USE_TSC_OFFSETTING)
-		vcpu->arch.tsc_offset -= vmcs12->tsc_offset;
+	if (vmcs12->cpu_based_vm_exec_control & CPU_BASED_USE_TSC_OFFSETTING) {
+		vcpu->arch.tsc_offset = vcpu->arch.l1_tsc_offset;
+
+		if (vmcs12->secondary_vm_exec_control & SECONDARY_EXEC_TSC_SCALING)
+			vcpu->arch.tsc_scaling_ratio = vcpu->arch.l1_tsc_scaling_ratio;
+	}
 
 	if (likely(!vmx->fail)) {
 		sync_vmcs02_to_vmcs12(vcpu, vmcs12);
