@@ -169,6 +169,13 @@ static inline u64 mul_u64_u64_shr(u64 a, u64 mul, unsigned int shift)
 }
 #endif /* mul_u64_u64_shr */
 
+#ifndef mul_s64_s64_shr
+static inline s64 mul_s64_s64_shr(s64 a, s64 mul, unsigned int shift)
+{
+	return (s64)(((__int128)a * mul) >> shift);
+}
+#endif /* mul_s64_s64_shr */
+
 #else
 
 #ifndef mul_u64_u32_shr
@@ -188,8 +195,9 @@ static inline u64 mul_u64_u32_shr(u64 a, u32 mul, unsigned int shift)
 }
 #endif /* mul_u64_u32_shr */
 
-#ifndef mul_u64_u64_shr
-static inline u64 mul_u64_u64_shr(u64 a, u64 b, unsigned int shift)
+#ifndef mul_u64_u64
+/* Multiplies a by b and stores the 128-bit result in low and high. */
+static inline void mul_u64_u64(u64 a, u64 b, u64 *low, u64 *high)
 {
 	union {
 		u64 ll;
@@ -220,17 +228,45 @@ static inline u64 mul_u64_u64_shr(u64 a, u64 b, unsigned int shift)
 	rh.l.low = c = (c >> 32) + rm.l.high + rn.l.high + rh.l.low;
 	rh.l.high = (c >> 32) + rh.l.high;
 
-	/*
-	 * The 128-bit result of the multiplication is in rl.ll and rh.ll,
-	 * shift it right and throw away the high part of the result.
-	 */
+	*low = rl.ll;
+	*high = rh.ll;
+}
+#endif /* mul_u64_u64 */
+
+#ifndef mul_u64_u64_shr
+static inline u64 mul_u64_u64_shr(u64 a, u64 b, unsigned int shift)
+{
+	u64 low, high;
+
+	mul_u64_u64(a, b, &low, &high);
+
 	if (shift == 0)
-		return rl.ll;
+		return low;
 	if (shift < 64)
-		return (rl.ll >> shift) | (rh.ll << (64 - shift));
-	return rh.ll >> (shift & 63);
+		return (low >> shift) | (high << (64 - shift));
+	return high >> (shift & 63);
 }
 #endif /* mul_u64_u64_shr */
+
+#ifndef mul_s64_s64_shr
+static inline s64 mul_s64_s64_shr(s64 a, s64 b, unsigned int shift)
+{
+	u64 low, high;
+
+	mul_u64_u64(a, b, &low, &high);
+
+	if (a < 0)
+		high -= b;
+	if (b < 0)
+		high -= a;
+
+	if (shift == 0)
+		return low;
+	if (shift < 64)
+		return (low >> shift) | (high << (64 - shift));
+	return ((s64) high) >> (shift & 63);
+}
+#endif /* mul_s64_s64_shr */
 
 #endif
 
