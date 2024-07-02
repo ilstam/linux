@@ -486,6 +486,10 @@ struct kvm_coalesced_mmio_ring {
 	((PAGE_SIZE - sizeof(struct kvm_coalesced_mmio_ring)) / \
 	 sizeof(struct kvm_coalesced_mmio))
 
+#define KVM_COALESCED_MMIO_MAX2(buffer_size) \
+	(((buffer_size) - sizeof(struct kvm_coalesced_mmio_ring)) / \
+	 sizeof(struct kvm_coalesced_mmio))
+
 /* for KVM_TRANSLATE */
 struct kvm_translation {
 	/* in */
@@ -1547,5 +1551,7 @@ struct kvm_create_guest_memfd {
 	__u64 flags;
 	__u64 reserved[6];
 };
+
+#define KVM_CREATE_COALESCED_MMIO_BUFFER _IO(KVMIO,   0xd5)
 
 #endif /* __LINUX_KVM_H */
