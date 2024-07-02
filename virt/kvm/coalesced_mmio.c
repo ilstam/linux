@@ -40,9 +40,8 @@ static int coalesced_mmio_in_range(struct kvm_coalesced_mmio_dev *dev,
 	return 1;
 }
 
-static int coalesced_mmio_has_room(struct kvm_coalesced_mmio_dev *dev, u32 last)
+static int coalesced_mmio_has_room(struct kvm_coalesced_mmio_ring *ring, size_t num_entries, u32 last)
 {
-	struct kvm_coalesced_mmio_ring *ring;
 	unsigned avail;
 
 	/* Are we able to batch it ? */
@@ -51,8 +50,7 @@ static int coalesced_mmio_has_room(struct kvm_coalesced_mmio_dev *dev, u32 last)
 	 * check if we don't meet the first used entry
 	 * there is always one unused entry in the buffer
 	 */
-	ring = dev->kvm->coalesced_mmio_ring;
-	avail = (ring->first - last - 1) % KVM_COALESCED_MMIO_MAX;
+	avail = (ring->first - last - 1) % num_entries;
 	if (avail == 0) {
 		/* full */
 		return 0;
@@ -67,17 +65,19 @@ static int coalesced_mmio_write(struct kvm_vcpu *vcpu,
 {
 	struct kvm_coalesced_mmio_dev *dev = to_mmio(this);
 	struct kvm_coalesced_mmio_ring *ring = dev->kvm->coalesced_mmio_ring;
+	size_t num_entries = KVM_COALESCED_MMIO_MAX;
+	spinlock_t *lock = &dev->kvm->ring_lock;
 	__u32 insert;
 
 	if (!coalesced_mmio_in_range(dev, addr, len))
 		return -EOPNOTSUPP;
 
-	spin_lock(&dev->kvm->ring_lock);
+	spin_lock(lock);
 
 	insert = READ_ONCE(ring->last);
-	if (!coalesced_mmio_has_room(dev, insert) ||
-	    insert >= KVM_COALESCED_MMIO_MAX) {
-		spin_unlock(&dev->kvm->ring_lock);
+	if (!coalesced_mmio_has_room(ring, num_entries, insert) ||
+	    insert >= num_entries) {
+		spin_unlock(lock);
 		return -EOPNOTSUPP;
 	}
 
@@ -88,8 +88,8 @@ static int coalesced_mmio_write(struct kvm_vcpu *vcpu,
 	memcpy(ring->coalesced_mmio[insert].data, val, len);
 	ring->coalesced_mmio[insert].pio = dev->zone.pio;
 	smp_wmb();
-	ring->last = (insert + 1) % KVM_COALESCED_MMIO_MAX;
-	spin_unlock(&dev->kvm->ring_lock);
+	ring->last = (insert + 1) % num_entries;
+	spin_unlock(lock);
 	return 0;
 }
 
